@@ -77,7 +77,7 @@ exports.authorize = async (req, res) => {
         }
 
         // Validate code_challenge_method
-        if (code_challenge_method !== 'S256') {
+        if (code_challenge_method !== 's256') {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid code_challenge_method. Only S256 is supported.',
