@@ -24,7 +24,7 @@ const authorizationCodeSchema = new mongoose.Schema(
         codeChallengeMethod: {
             type: String,
             required: true,
-            enum: ['S256'],
+            enum: ['s256'],
         },
         redirectUrl: {
             type: String,
