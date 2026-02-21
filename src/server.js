@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/database');
+const dynamicOAuthCors = require('./middleware/oauthCors');
 
 // Initialize express app
 const app = express();
@@ -18,13 +19,27 @@ app.use(express.urlencoded({ extended: false }));
 // Security middleware
 app.use(helmet());
 
-// CORS configuration
+// Dynamic CORS for OAuth public endpoints MUST come before the global CORS
+// so that registered third-party app origins are allowed on /api/oauth/*
+// before the global CORS can reject them.
+app.use('/api/oauth', dynamicOAuthCors);
+
+// Global CORS for all other API routes (DevPortal frontend only)
+const allowedOrigins = process.env.NODE_ENV === 'production'
+    ? [process.env.FRONTEND_URL].filter(Boolean)
+    : ['http://localhost:5173', 'http://localhost:3000'];
+
 app.use(
     cors({
-        origin: process.env.NODE_ENV === 'production'
-            ? process.env.FRONTEND_URL
-            : 'http://localhost:5173',
+        origin: (origin, callback) => {
+            if (!origin) return callback(null, true);
+            if (allowedOrigins.includes(origin)) return callback(null, true);
+            // Let /api/oauth/* requests fall through to dynamicOAuthCors above
+            callback(null, false);
+        },
         credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
     })
 );
 
