@@ -61,6 +61,73 @@ exports.validateAuthRequest = async (req, res) => {
     }
 };
 
+// @desc    Authorize using existing DevPortal session token (SSO bypass)
+// @route   POST /api/oauth/authorize-with-token
+// @access  Public
+exports.authorizeWithToken = async (req, res) => {
+    try {
+        const { token: sessionToken, clientId, redirectUrl, code_challenge, code_challenge_method } = req.body;
+
+        if (!sessionToken || !clientId || !redirectUrl || !code_challenge || !code_challenge_method) {
+            return res.status(400).json({ success: false, message: 'Missing required parameters' });
+        }
+
+        if (code_challenge_method !== 's256') {
+            return res.status(400).json({ success: false, message: 'Invalid code_challenge_method. Only S256 is supported.' });
+        }
+
+        // Verify the DevPortal JWT
+        let decoded;
+        try {
+            decoded = jwt.verify(sessionToken, process.env.JWT_SECRET);
+        } catch (err) {
+            return res.status(401).json({ success: false, message: 'Session token is invalid or expired. Please log in again.' });
+        }
+
+        // Find user
+        const user = await User.findById(decoded.id || decoded.userId);
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'User not found' });
+        }
+
+        // Find application
+        const application = await Application.findOne({ clientId });
+        if (!application) {
+            return res.status(404).json({ success: false, message: 'Invalid client ID' });
+        }
+
+        // Validate redirect URL
+        if (application.redirectUri !== redirectUrl) {
+            return res.status(400).json({ success: false, message: 'Redirect URL does not match registered URI' });
+        }
+
+        // Check app access
+        const userAccess = user.appAccess.find(
+            access => access.applicationId.toString() === application._id.toString()
+        );
+        if (!userAccess) {
+            return res.status(403).json({ success: false, message: 'You do not have access to this application. Please request access first.' });
+        }
+
+        // Generate and store authorization code
+        const authCode = crypto.randomBytes(32).toString('hex');
+        await AuthorizationCode.create({
+            code: authCode,
+            clientId,
+            userId: user._id,
+            codeChallenge: code_challenge,
+            codeChallengeMethod: code_challenge_method,
+            redirectUrl,
+            expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        });
+
+        res.status(200).json({ success: true, code: authCode });
+    } catch (error) {
+        console.error('Authorize with token error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 // @desc    Authorize user and generate authorization code
 // @route   POST /api/oauth/authorize
 // @access  Public

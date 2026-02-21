@@ -187,6 +187,18 @@ exports.createApplication = async (req, res) => {
             admins: [req.user.id], // Auto-assign creator as admin
         });
 
+        // Grant the creator access to their own app in the User model
+        const User = require('../models/User');
+        await User.findByIdAndUpdate(req.user.id, {
+            $push: {
+                appAccess: {
+                    applicationId: application._id,
+                    role: 'admin',
+                    grantedAt: new Date(),
+                },
+            },
+        });
+
         // Get the application with the client secret (only shown once)
         const appWithSecret = await Application.findById(application._id).select(
             '+clientSecret'
@@ -205,6 +217,7 @@ exports.createApplication = async (req, res) => {
         });
     }
 };
+
 
 // @desc    Update application
 // @route   PUT /api/applications/:id
